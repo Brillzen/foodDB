@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans antialiased">
+
+  <div class="max-w-md mx-auto bg-white min-h-screen shadow-lg relative">
+    
+    <header class="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center">
+      <h1 class="text-xl font-bold">Yazio Clone</h1>
+      <button onclick="syncDatabase()" id="syncBtn" class="text-sm bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded">Sync DB</button>
+    </header>
+
+    <main class="p-4">
+      <div id="statusMsg" class="text-sm text-center mb-4 text-gray-500">Checking local cache...</div>
+
+      <div id="scanner-container" class="mb-6 hidden">
+        <div id="reader" class="w-full bg-black rounded overflow-hidden"></div>
+        <button onclick="stopScanner()" class="w-full mt-2 bg-red-500 text-white py-2 rounded shadow">Stop Scanner</button>
+      </div>
+
+      <div class="text-center">
+        <button onclick="startScanner()" id="startScanBtn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-full shadow-lg w-full mb-6">
+          📷 Scan Barcode
+        </button>
+      </div>
+
+      <div id="result-section" class="hidden bg-blue-50 border border-blue-200 p-4 rounded shadow-sm mb-6">
+        <h2 id="res-name" class="text-lg font-bold text-blue-800 mb-2">Product Name</h2>
+        <div class="grid grid-cols-4 gap-2 text-center text-sm">
+          <div class="bg-white p-2 rounded shadow-sm"><span class="block font-bold text-gray-700" id="res-cal">0</span>Cals</div>
+          <div class="bg-white p-2 rounded shadow-sm"><span class="block font-bold text-gray-700" id="res-pro">0</span>Pro</div>
+          <div class="bg-white p-2 rounded shadow-sm"><span class="block font-bold text-gray-700" id="res-carb">0</span>Carb</div>
+          <div class="bg-white p-2 rounded shadow-sm"><span class="block font-bold text-gray-700" id="res-fat">0</span>Fat</div>
+        </div>
+      </div>
+
+      <div id="add-form-section" class="hidden bg-gray-50 border border-gray-200 p-4 rounded shadow-sm">
+        <h2 class="text-md font-bold mb-3">Product not found. Add it!</h2>
+        <p class="text-xs text-gray-500 mb-3">(OCR Integration will go here. For now, enter manually per 100g)</p>
+        
+        <input type="text" id="new-barcode" readonly class="w-full mb-2 p-2 border rounded bg-gray-200 text-sm">
+        <input type="text" id="new-name" placeholder="Product Name" class="w-full mb-2 p-2 border rounded text-sm">
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <input type="number" id="new-cal" placeholder="Calories" class="w-full p-2 border rounded text-sm">
+          <input type="number" id="new-pro" placeholder="Protein (g)" class="w-full p-2 border rounded text-sm">
+          <input type="number" id="new-carb" placeholder="Carbs (g)" class="w-full p-2 border rounded text-sm">
+          <input type="number" id="new-fat" placeholder="Fat (g)" class="w-full p-2 border rounded text-sm">
+        </div>
+        <button onclick="saveNewProduct()" id="saveBtn" class="w-full bg-blue-600 text-white py-2 rounded font-bold">Save to Database</button>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    let html5QrcodeScanner;
+    let localDB = [];
+
+    // Initialize App
+    window.onload = async () => {
+      await loadCache();
+    };
+
+    async function loadCache() {
+      const cachedData = await localforage.getItem('productsDB');
+      if (cachedData && cachedData.length > 0) {
+        localDB = cachedData;
+        document.getElementById('statusMsg').innerText = `Loaded ${localDB.length} products from cache.`;
+      } else {
+        syncDatabase();
+      }
+    }
+
+    function syncDatabase() {
+      document.getElementById('statusMsg').innerText = "Syncing from Google Sheets...";
+      document.getElementById('syncBtn').disabled = true;
+      
+      google.script.run
+        .withSuccessHandler(async (data) => {
+          if(!data.error) {
+            localDB = data;
+            await localforage.setItem('productsDB', data);
+            document.getElementById('statusMsg').innerText = `Synced! ${data.length} products stored.`;
+          } else {
+            document.getElementById('statusMsg').innerText = "Error syncing DB.";
+          }
+          document.getElementById('syncBtn').disabled = false;
+        })
+        .getCompleteDatabase();
+    }
+
+    // --- Scanner Logic ---
+    function startScanner() {
+      document.getElementById('scanner-container').classList.remove('hidden');
+      document.getElementById('startScanBtn').classList.add('hidden');
+      document.getElementById('result-section').classList.add('hidden');
+      document.getElementById('add-form-section').classList.add('hidden');
+
+      html5QrcodeScanner = new Html5Qrcode("reader");
+      const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+
+      html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
+        .catch(err => {
+          alert("Camera error: " + err);
+          stopScanner();
+        });
+    }
+
+    function stopScanner() {
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => {
+          document.getElementById('scanner-container').classList.add('hidden');
+          document.getElementById('startScanBtn').classList.remove('hidden');
+        }).catch(err => console.error("Failed to stop scanner", err));
+      }
+    }
+
+    function onScanSuccess(decodedText) {
+      stopScanner();
+      checkDatabase(decodedText);
+    }
+
+    // --- Data Logic ---
+    function checkDatabase(barcode) {
+      // Find in IndexedDB array (keys generated by GAS match Sheet headers)
+      const product = localDB.find(p => p["Barcode"] == barcode);
+
+      if (product) {
+        // Show result
+        document.getElementById('result-section').classList.remove('hidden');
+        document.getElementById('res-name').innerText = product["Product Name"];
+        document.getElementById('res-cal').innerText = product["Calories (kcal)"];
+        document.getElementById('res-pro').innerText = product["Protein (g)"];
+        document.getElementById('res-carb').innerText = product["Carbs (g)"];
+        document.getElementById('res-fat').innerText = product["Fat (g)"];
+        document.getElementById('statusMsg').innerText = "Product loaded from cache!";
+      } else {
+        // Show add form
+        document.getElementById('add-form-section').classList.remove('hidden');
+        document.getElementById('new-barcode').value = barcode;
+        document.getElementById('statusMsg').innerText = "New barcode detected.";
+      }
+    }
+
+    function saveNewProduct() {
+      const btn = document.getElementById('saveBtn');
+      btn.innerText = "Saving...";
+      btn.disabled = true;
+
+      const data = {
+        barcode: document.getElementById('new-barcode').value,
+        name: document.getElementById('new-name').value,
+        calories: document.getElementById('new-cal').value,
+        protein: document.getElementById('new-pro').value,
+        carbs: document.getElementById('new-carb').value,
+        fat: document.getElementById('new-fat').value
+      };
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          if(res.success) {
+            btn.innerText = "Saved!";
+            document.getElementById('add-form-section').classList.add('hidden');
+            syncDatabase(); // Re-sync to update cache
+          } else {
+            alert("Error: " + res.error);
+            btn.innerText = "Save to Database";
+            btn.disabled = false;
+          }
+        })
+        .addNewProduct(data);
+    }
+  </script>
+</body>
+</html>
