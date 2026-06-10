@@ -23,7 +23,7 @@
       <div id="statusMsg" class="text-sm text-center mb-4 text-gray-500">Checking local cache...</div>
 
       <div id="scanner-container" class="mb-6 hidden">
-        <div id="reader" class="w-full bg-black rounded overflow-hidden relative [&>video]:w-full [&>canvas]:absolute [&>canvas]:top-0 [&>canvas]:left-0 [&>canvas]:w-full"></div>
+        <div id="reader" class="w-full aspect-video bg-black rounded overflow-hidden relative [&>video]:w-full [&>video]:h-full [&>video]:object-cover [&>canvas]:absolute [&>canvas]:top-0 [&>canvas]:left-0 [&>canvas]:w-full [&>canvas]:h-full"></div>
         <button onclick="stopScanner()" class="w-full mt-2 bg-red-500 text-white py-2 rounded shadow">Stop Scanner</button>
       </div>
 
@@ -111,7 +111,7 @@
       document.getElementById('syncBtn').disabled = false;
     }
 
-    // --- Optimized Quagga2 Scanner Logic ---
+    // --- Advanced Quagga2 Scanner Logic with Visual Feedback ---
     function startScanner() {
       document.getElementById('scanner-container').classList.remove('hidden');
       document.getElementById('startScanBtn').classList.add('hidden');
@@ -125,18 +125,17 @@
           target: document.querySelector("#reader"),
           constraints: {
             facingMode: "environment",
-            width: { ideal: 1280 }, // Force HD resolution
+            width: { ideal: 1280 }, 
             height: { ideal: 720 }
           },
         },
         locator: {
           patchSize: "medium",
-          halfSample: true // Speeds up processing significantly on mobile
+          halfSample: true 
         },
-        locate: true, // CRUCIAL: Finds barcodes at ANY angle (vertical/diagonal)
-        numOfWorkers: 2, // Uses multi-threading on your phone's processor
+        locate: true, 
+        numOfWorkers: 2, 
         decoder: {
-          // Strictly lock down readers to grocery store types to prevent false positives
           readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader"]
         }
       }, function(err) {
@@ -148,8 +147,55 @@
         Quagga.start();
       });
 
-      // Attach the successful scan event listener
+      // Track detections and successful scans
+      Quagga.onProcessed(onScannerProcessed);
       Quagga.onDetected(onScanSuccess);
+    }
+
+    function stopScanner() {
+      if (Quagga) {
+        Quagga.offProcessed(onScannerProcessed);
+        Quagga.offDetected(onScanSuccess);
+        Quagga.stop();
+        document.getElementById('scanner-container').classList.add('hidden');
+        document.getElementById('startScanBtn').classList.remove('hidden');
+      }
+    }
+
+    // NEW: Draws interactive green boxes over the barcode lines while scanning
+    function onScannerProcessed(result) {
+      const drawingCtx = Quagga.canvas.ctx.overlay;
+      const drawingCanvas = Quagga.canvas.dom.overlay;
+
+      if (result) {
+        // Clear previous frame drawings
+        if (result.boxes) {
+          drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.getAttribute("width")), parseInt(drawingCanvas.getAttribute("height")));
+          result.boxes.filter(function (box) {
+            return box !== result.box;
+          }).forEach(function (box) {
+            Quagga.industrial.領 || Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, { color: "green", lineWidth: 2 });
+          });
+        }
+
+        if (result.box) {
+          Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, drawingCtx, { color: "#00F", lineWidth: 2 });
+        }
+
+        if (result.codeResult && result.codeResult.code) {
+          Quagga.ImageDebug.drawPath(result.line, { x: 'x', y: 'y' }, drawingCtx, { color: 'red', lineWidth: 3 });
+        }
+      }
+    }
+
+    function onScanSuccess(result) {
+      if (result && result.codeResult && result.codeResult.code) {
+        const barcode = result.codeResult.code;
+        if (barcode.length >= 8) { 
+          stopScanner();
+          checkDatabase(barcode);
+        }
+      }
     }
 
     function stopScanner() {
