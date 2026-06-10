@@ -63,7 +63,6 @@
           <div id="ocrStatus" class="text-xs text-center text-gray-500 mt-1"></div>
         </div>
 
-        <!-- DEBUG PANEL: shows raw OCR text to help diagnose parsing issues -->
         <div id="ocr-debug-panel" class="hidden mb-4">
           <p class="text-xs font-bold text-gray-500 mb-1">Raw OCR Output (for debugging):</p>
           <pre id="ocr-raw-text" class="text-xs bg-gray-100 border rounded p-2 overflow-auto max-h-40 whitespace-pre-wrap"></pre>
@@ -111,13 +110,13 @@
   </div>
 
   <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbzzvyJ5OiC-PzDBdvEpPUkvQz9PLK9oR1ex1aIIGS3n7VHlECxfGY_M6jUcYsQcomQM/exec";
+    // URL REDACTED FOR SAFETY - PLEASE INSERT YOUR WEB APP URL
+    const GAS_URL = "YOUR_GAS_WEB_APP_URL";
 
     let localDB = [];
     let userPin = "";
 
     // ─── PIN MANAGEMENT ───────────────────────────────────────────────────────────
-
     function promptForPin(reason = "Enter the Secret Access PIN:") {
       let pin = "";
       while (!pin) {
@@ -140,7 +139,6 @@
     }
 
     // ─── INIT ─────────────────────────────────────────────────────────────────────
-
     window.onload = async () => {
       userPin = localStorage.getItem('app_user_pin');
       if (!userPin) {
@@ -150,7 +148,6 @@
     };
 
     // ─── DATABASE ─────────────────────────────────────────────────────────────────
-
     async function loadCache() {
       const cachedData = await localforage.getItem('productsDB');
       if (cachedData && cachedData.length > 0) {
@@ -188,7 +185,6 @@
     }
 
     // ─── SCANNER ──────────────────────────────────────────────────────────────────
-
     function startScanner() {
       document.getElementById('scanner-container').classList.remove('hidden');
       document.getElementById('startScanBtn').classList.add('hidden');
@@ -220,7 +216,6 @@
         }
         Quagga.start();
       });
-
       Quagga.onProcessed(onScannerProcessed);
       Quagga.onDetected(onScanSuccess);
     }
@@ -277,7 +272,6 @@
     }
 
     // ─── DATA LOGIC ───────────────────────────────────────────────────────────────
-
     function checkDatabase(barcodeInput) {
       let barcode = String(barcodeInput).trim();
       const product = localDB.find(p => String(p["Barcode"]).trim() === barcode);
@@ -298,7 +292,6 @@
     }
 
     // ─── OCR ──────────────────────────────────────────────────────────────────────
-
     async function runLabelOCR(input) {
       const file = input.files[0];
       if (!file) return;
@@ -310,7 +303,6 @@
       const reader = new FileReader();
       reader.onload = async function() {
         const base64Image = reader.result.split(',')[1];
-
         try {
           const response = await fetch(GAS_URL + '?t=' + Date.now(), {
             method: 'POST',
@@ -322,38 +314,35 @@
 
           if (result.success) {
             // Populate fields
-            document.getElementById('new-cal').value   = result.macros.calories;
-            document.getElementById('new-pro').value   = result.macros.protein;
-            document.getElementById('new-carb').value  = result.macros.carbs;
+            document.getElementById('new-cal').value = result.macros.calories;
+            document.getElementById('new-pro').value = result.macros.protein;
+            document.getElementById('new-carb').value = result.macros.carbs;
             document.getElementById('new-zucker').value = result.macros.zucker;
-            document.getElementById('new-fat').value   = result.macros.fat;
+            document.getElementById('new-fat').value = result.macros.fat;
             document.getElementById('new-gesFat').value = result.macros.gesFat;
-            document.getElementById('new-salt').value  = result.macros.salt;
+            document.getElementById('new-salt').value = result.macros.salt;
 
             // Show raw OCR debug panel so you can inspect what Vision returned
             document.getElementById('ocr-raw-text').innerText = result.rawText || "(no raw text returned)";
             document.getElementById('ocr-debug-panel').classList.remove('hidden');
-
-            status.innerText = "✅ Values extracted! Check debug panel if any fields are empty.";
+            status.innerText = "Extraction complete! Please verify.";
             status.className = "text-xs text-center text-green-600 font-bold mt-1";
           } else if (result.code === "INVALID_PIN") {
             handleInvalidPin();
-            status.innerText = "PIN updated. Please tap the photo button again to retry.";
-            status.className = "text-xs text-center text-yellow-600 font-bold mt-1";
+            status.innerText = "Invalid PIN.";
           } else {
             status.innerText = "OCR Failed: " + result.error;
-            status.className = "text-xs text-center text-red-500 mt-1";
+            status.className = "text-xs text-center text-red-600 font-bold mt-1";
           }
         } catch (err) {
-          status.innerText = "Network failure running OCR processing.";
-          status.className = "text-xs text-center text-red-500 mt-1";
+          status.innerText = "Network error during OCR.";
+          status.className = "text-xs text-center text-red-600 font-bold mt-1";
         }
       };
       reader.readAsDataURL(file);
     }
 
-    // ─── SAVE ─────────────────────────────────────────────────────────────────────
-
+    // ─── SAVE PRODUCT ─────────────────────────────────────────────────────────────
     async function saveNewProduct() {
       const btn = document.getElementById('saveBtn');
       btn.innerText = "Saving...";
