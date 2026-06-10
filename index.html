@@ -8,7 +8,7 @@
   <base target="_top">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
 </head>
 <body class="bg-gray-100 text-gray-800 font-sans antialiased">
 
@@ -23,7 +23,7 @@
       <div id="statusMsg" class="text-sm text-center mb-4 text-gray-500">Checking local cache...</div>
 
       <div id="scanner-container" class="mb-6 hidden">
-        <div id="reader" class="w-full bg-black rounded overflow-hidden"></div>
+        <div id="reader" class="w-full bg-black rounded overflow-hidden relative [&>video]:w-full [&>canvas]:absolute [&>canvas]:top-0 [&>canvas]:left-0 [&>canvas]:w-full"></div>
         <button onclick="stopScanner()" class="w-full mt-2 bg-red-500 text-white py-2 rounded shadow">Stop Scanner</button>
       </div>
 
@@ -111,41 +111,67 @@
       document.getElementById('syncBtn').disabled = false;
     }
 
+    // --- Optimized Quagga2 Scanner Logic ---
     function startScanner() {
       document.getElementById('scanner-container').classList.remove('hidden');
       document.getElementById('startScanBtn').classList.add('hidden');
       document.getElementById('result-section').classList.add('hidden');
       document.getElementById('add-form-section').classList.add('hidden');
 
-      html5QrcodeScanner = new Html5Qrcode("reader");
-      
-      const config = { 
-        fps: 15, 
-        // We make the scanning box a square so it comfortably fits horizontal or vertical codes
-        qrbox: { width: 250, height: 250 }, 
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.EAN_13, 
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E
-        ],
-        // FIX: Reinforce back camera here to prevent it from flipping to the front camera
-        videoConstraints: {
-          facingMode: "environment", 
-          width: { min: 640, ideal: 1280, max: 1920 },
-          height: { min: 480, ideal: 720, max: 1080 }
+      Quagga.init({
+        inputStream: {
+          name: "LiveStream",
+          type: "LiveStream",
+          target: document.querySelector("#reader"),
+          constraints: {
+            facingMode: "environment",
+            width: { ideal: 1280 }, // Force HD resolution
+            height: { ideal: 720 }
+          },
         },
-        // UX FIX: Activates native hardware decoding to scan sideways/vertical barcodes automatically
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true
+        locator: {
+          patchSize: "medium",
+          halfSample: true // Speeds up processing significantly on mobile
+        },
+        locate: true, // CRUCIAL: Finds barcodes at ANY angle (vertical/diagonal)
+        numOfWorkers: 2, // Uses multi-threading on your phone's processor
+        decoder: {
+          // Strictly lock down readers to grocery store types to prevent false positives
+          readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader"]
         }
-      };
-
-      html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
-        .catch(err => {
-          alert("Camera error: " + err);
+      }, function(err) {
+        if (err) {
+          alert("Camera Error: " + err);
           stopScanner();
-        });
+          return;
+        }
+        Quagga.start();
+      });
+
+      // Attach the successful scan event listener
+      Quagga.onDetected(onScanSuccess);
+    }
+
+    function stopScanner() {
+      if (Quagga) {
+        Quagga.offDetected(onScanSuccess); // Remove listener
+        Quagga.stop();
+        document.getElementById('scanner-container').classList.add('hidden');
+        document.getElementById('startScanBtn').classList.remove('hidden');
+      }
+    }
+
+    // Quagga passes a structured result object
+    function onScanSuccess(result) {
+      if (result && result.codeResult && result.codeResult.code) {
+        const barcode = result.codeResult.code;
+        
+        // Quagga is highly sensitive; ignore incomplete scans
+        if (barcode.length >= 8) { 
+          stopScanner();
+          checkDatabase(barcode);
+        }
+      }
     }
 
     function stopScanner() {
