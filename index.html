@@ -121,21 +121,26 @@
       
       const config = { 
         fps: 15, 
-        qrbox: { width: 250, height: 150 }, 
+        // We make the scanning box a square so it comfortably fits horizontal or vertical codes
+        qrbox: { width: 250, height: 250 }, 
         formatsToSupport: [
           Html5QrcodeSupportedFormats.EAN_13, 
           Html5QrcodeSupportedFormats.EAN_8,
           Html5QrcodeSupportedFormats.UPC_A,
           Html5QrcodeSupportedFormats.UPC_E
         ],
-        // The HD camera constraints must be injected here!
+        // FIX: Reinforce back camera here to prevent it from flipping to the front camera
         videoConstraints: {
+          facingMode: "environment", 
           width: { min: 640, ideal: 1280, max: 1920 },
           height: { min: 480, ideal: 720, max: 1080 }
+        },
+        // UX FIX: Activates native hardware decoding to scan sideways/vertical barcodes automatically
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
         }
       };
 
-      // The first parameter goes back to exactly 1 key
       html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
         .catch(err => {
           alert("Camera error: " + err);
