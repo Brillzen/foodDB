@@ -86,6 +86,10 @@
       try {
         const response = await fetch(GAS_URL, {
           method: 'POST',
+          redirect: 'follow', // Crucial for Google Apps Script
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8", // Bypasses the CORS preflight check
+          },
           body: JSON.stringify({ action: "getDatabase" })
         });
         const result = await response.json();
@@ -171,6 +175,10 @@
       try {
         const response = await fetch(GAS_URL, {
           method: 'POST',
+          redirect: 'follow', // Crucial for Google Apps Script
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8", // Bypasses the CORS preflight check
+          },
           body: JSON.stringify({ action: "addProduct", productData: productData })
         });
         const result = await response.json();
