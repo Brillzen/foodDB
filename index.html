@@ -289,7 +289,7 @@
             method: 'POST',
             redirect: 'follow',
             headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ action: "runOCR", base64Image: base64Image })
+            body: JSON.stringify({ action: "runOCR", base64Image: base64Image, pin: userPin })
           });
           const result = await response.json();
 
@@ -339,7 +339,7 @@
           method: 'POST',
           redirect: 'follow',
           headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "addProduct", productData: productData })
+          body: JSON.stringify({ action: "addProduct", productData: productData, pin: userPin })
         });
         const result = await response.json();
         
