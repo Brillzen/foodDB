@@ -44,18 +44,52 @@
       </div>
 
       <div id="add-form-section" class="hidden bg-gray-50 border border-gray-200 p-4 rounded shadow-sm">
-        <h2 class="text-md font-bold mb-3">Product not found. Add it!</h2>
-        <p class="text-xs text-gray-500 mb-3">(OCR Integration will go here. For now, enter manually per 100g)</p>
+        <h2 class="text-md font-bold mb-1">Product not found.</h2>
         
-        <input type="text" id="new-barcode" readonly class="w-full mb-2 p-2 border rounded bg-gray-200 text-sm">
-        <input type="text" id="new-name" placeholder="Product Name" class="w-full mb-2 p-2 border rounded text-sm">
-        <div class="grid grid-cols-2 gap-2 mb-4">
-          <input type="number" id="new-cal" placeholder="Calories" class="w-full p-2 border rounded text-sm">
-          <input type="number" id="new-pro" placeholder="Protein (g)" class="w-full p-2 border rounded text-sm">
-          <input type="number" id="new-carb" placeholder="Carbs (g)" class="w-full p-2 border rounded text-sm">
-          <input type="number" id="new-fat" placeholder="Fat (g)" class="w-full p-2 border rounded text-sm">
+        <div class="mb-4">
+          <label class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded block text-center cursor-pointer shadow">
+            📸 Photo of Nutrition Label (100g)
+            <input type="file" accept="image/*" capture="environment" id="ocr-file" class="hidden" onchange="runLabelOCR(this)">
+          </label>
+          <div id="ocrStatus" class="text-xs text-center text-gray-500 mt-1"></div>
         </div>
-        <button onclick="saveNewProduct()" id="saveBtn" class="w-full bg-blue-600 text-white py-2 rounded font-bold">Save to Database</button>
+
+        <hr class="mb-4">
+        
+        <input type="text" id="new-barcode" readonly class="w-full mb-2 p-2 border rounded bg-gray-200 text-sm font-mono">
+        <input type="text" id="new-name" placeholder="Product Name" class="w-full mb-2 p-2 border rounded text-sm">
+        
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <div>
+            <label class="text-xs text-gray-500">Calories (kcal)</label>
+            <input type="number" step="any" id="new-cal" class="w-full p-2 border rounded text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500">Protein (g)</label>
+            <input type="number" step="any" id="new-pro" class="w-full p-2 border rounded text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500">Carbs (g)</label>
+            <input type="number" step="any" id="new-carb" class="w-full p-2 border rounded text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500">..davon Zucker (g)</label>
+            <input type="number" step="any" id="new-zucker" class="w-full p-2 border rounded text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500">Fat (g)</label>
+            <input type="number" step="any" id="new-fat" class="w-full p-2 border rounded text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500">..gesättigte (g)</label>
+            <input type="number" step="any" id="new-gesFat" class="w-full p-2 border rounded text-sm">
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-gray-500">Salz / Natrium (g)</label>
+            <input type="number" step="any" id="new-salt" class="w-full p-2 border rounded text-sm">
+          </div>
+        </div>
+        <button onclick="saveNewProduct()" id="saveBtn" class="w-full bg-blue-600 text-white py-2 rounded font-bold shadow">Save to Database</button>
       </div>
 
     </main>
@@ -66,8 +100,20 @@
 
     let localDB = [];
 
-    // Initialize App
+    let userPin = "";
+
     window.onload = async () => {
+      // Check if the phone already remembers the PIN
+      userPin = localStorage.getItem('app_user_pin');
+      
+      // If not, keep nagging until they enter something
+      while (!userPin) {
+        userPin = prompt("Enter the Secret Access PIN:");
+        if (userPin) {
+          localStorage.setItem('app_user_pin', userPin);
+        }
+      }
+
       await loadCache();
     };
 
@@ -224,6 +270,53 @@
       }
     }
 
+    // New function handling local file encoding and API execution
+    function runLabelOCR(input) {
+      const file = input.files[0];
+      if (!file) return;
+
+      const status = document.getElementById('ocrStatus');
+      status.innerText = "Analyzing nutrition values...";
+      status.classList.add('text-orange-600', 'font-bold');
+
+      const reader = new FileReader();
+      reader.onload = async function() {
+        // Strip out the metadata prefix to leave pure Base64 text data
+        const base64Image = reader.result.split(',')[1];
+
+        try {
+          const response = await fetch(GAS_URL, {
+            method: 'POST',
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action: "runOCR", base64Image: base64Image })
+          });
+          const result = await response.json();
+
+          if (result.success) {
+            // Populate the input fields automatically with parsed numbers
+            document.getElementById('new-cal').value = result.macros.calories;
+            document.getElementById('new-pro').value = result.macros.protein;
+            document.getElementById('new-carb').value = result.macros.carbs;
+            document.getElementById('new-zucker').value = result.macros.zucker;
+            document.getElementById('new-fat').value = result.macros.fat;
+            document.getElementById('new-gesFat').value = result.macros.gesFat;
+            document.getElementById('new-salt').value = result.macros.salt;
+            status.innerText = "Values successfully extracted! Please verify.";
+            status.className = "text-xs text-center text-green-600 font-bold mt-1";
+          } else {
+            status.innerText = "OCR Failed: " + result.error;
+            status.className = "text-xs text-center text-red-500 mt-1";
+          }
+        } catch (err) {
+          status.innerText = "Network failure running OCR processing.";
+          status.className = "text-xs text-center text-red-500 mt-1";
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Updated Save function coordinating expanded dictionary object
     async function saveNewProduct() {
       const btn = document.getElementById('saveBtn');
       btn.innerText = "Saving...";
@@ -235,7 +328,10 @@
         calories: document.getElementById('new-cal').value,
         protein: document.getElementById('new-pro').value,
         carbs: document.getElementById('new-carb').value,
-        fat: document.getElementById('new-fat').value
+        zucker: document.getElementById('new-zucker').value,
+        fat: document.getElementById('new-fat').value,
+        gesFat: document.getElementById('new-gesFat').value,
+        salt: document.getElementById('new-salt').value
       };
 
       try {
@@ -250,6 +346,7 @@
         if (result.success) {
           btn.innerText = "Saved!";
           document.getElementById('add-form-section').classList.add('hidden');
+          document.getElementById('ocrStatus').innerText = ""; // Clear status
           syncDatabase(); 
         } else {
           alert("Error: " + result.error);
