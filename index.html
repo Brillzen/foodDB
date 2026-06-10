@@ -111,7 +111,6 @@
       document.getElementById('syncBtn').disabled = false;
     }
 
-    // --- Scanner Logic ---
     function startScanner() {
       document.getElementById('scanner-container').classList.remove('hidden');
       document.getElementById('startScanBtn').classList.add('hidden');
@@ -119,7 +118,18 @@
       document.getElementById('add-form-section').classList.add('hidden');
 
       html5QrcodeScanner = new Html5Qrcode("reader");
-      const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+      
+      // OPTIMIZED CONFIGURATION FOR FOOD BARCODES
+      const config = { 
+        fps: 20, // Double the frame rate for faster detection
+        qrbox: { width: 300, height: 150 }, // Wider target box to fit standard EAN/UPC codes
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13, // Standard EU food barcode
+          Html5QrcodeSupportedFormats.EAN_8,  // Short EU food barcode
+          Html5QrcodeSupportedFormats.UPC_A,  // Standard US food barcode
+          Html5QrcodeSupportedFormats.UPC_E   // Short US food barcode
+        ]
+      };
       
       html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
         .catch(err => {
