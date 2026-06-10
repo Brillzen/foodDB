@@ -64,7 +64,6 @@
   <script>
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzzvyJ5OiC-PzDBdvEpPUkvQz9PLK9oR1ex1aIIGS3n7VHlECxfGY_M6jUcYsQcomQM/exec";
 
-    let html5QrcodeScanner;
     let localDB = [];
 
     // Initialize App
@@ -82,7 +81,6 @@
       }
     }
 
-    // UPDATED: Now uses fetch() to talk to GitHub
     async function syncDatabase() {
       document.getElementById('statusMsg').innerText = "Syncing from Google Sheets...";
       document.getElementById('syncBtn').disabled = true;
@@ -90,10 +88,8 @@
       try {
         const response = await fetch(GAS_URL, {
           method: 'POST',
-          redirect: 'follow', // Crucial for Google Apps Script
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8", // Bypasses the CORS preflight check
-          },
+          redirect: 'follow',
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({ action: "getDatabase" })
         });
         const result = await response.json();
@@ -111,7 +107,7 @@
       document.getElementById('syncBtn').disabled = false;
     }
 
-    // --- Advanced Quagga2 Scanner Logic with Visual Feedback ---
+    // --- Scanner Logic ---
     function startScanner() {
       document.getElementById('scanner-container').classList.remove('hidden');
       document.getElementById('startScanBtn').classList.add('hidden');
@@ -129,10 +125,7 @@
             height: { ideal: 720 }
           },
         },
-        locator: {
-          patchSize: "medium",
-          halfSample: true 
-        },
+        locator: { patchSize: "medium", halfSample: true },
         locate: true, 
         numOfWorkers: 2, 
         decoder: {
@@ -147,41 +140,50 @@
         Quagga.start();
       });
 
-      // Track detections and successful scans
       Quagga.onProcessed(onScannerProcessed);
       Quagga.onDetected(onScanSuccess);
     }
 
+    // FIXED: Now aggressively forces iOS Safari to kill the camera hardware stream
     function stopScanner() {
-      if (Quagga) {
+      if (typeof Quagga !== 'undefined') {
         Quagga.offProcessed(onScannerProcessed);
         Quagga.offDetected(onScanSuccess);
         Quagga.stop();
+        
+        // Explicitly find the video stream and shut it down down at the hardware level
+        const video = document.querySelector("#reader video");
+        if (video && video.srcObject) {
+          const stream = video.srcObject;
+          const tracks = stream.getTracks();
+          tracks.forEach(track => track.stop()); // Shuts off phone camera lens
+          video.srcObject = null;
+        }
+        
+        // Completely wipe the container HTML to clear out old canvas drawings
+        document.getElementById('reader').innerHTML = ""; 
+
         document.getElementById('scanner-container').classList.add('hidden');
         document.getElementById('startScanBtn').classList.remove('hidden');
       }
     }
 
-    // NEW: Draws interactive green boxes over the barcode lines while scanning
     function onScannerProcessed(result) {
       const drawingCtx = Quagga.canvas.ctx.overlay;
       const drawingCanvas = Quagga.canvas.dom.overlay;
 
       if (result) {
-        // Clear previous frame drawings
         if (result.boxes) {
           drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.getAttribute("width")), parseInt(drawingCanvas.getAttribute("height")));
-          result.boxes.filter(function (box) {
-            return box !== result.box;
-          }).forEach(function (box) {
-            Quagga.industrial.領 || Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, { color: "green", lineWidth: 2 });
+          result.boxes.forEach(function (box) {
+            if (box !== result.box) {
+              Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, { color: "green", lineWidth: 2 });
+            }
           });
         }
-
         if (result.box) {
           Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, drawingCtx, { color: "#00F", lineWidth: 2 });
         }
-
         if (result.codeResult && result.codeResult.code) {
           Quagga.ImageDebug.drawPath(result.line, { x: 'x', y: 'y' }, drawingCtx, { color: 'red', lineWidth: 3 });
         }
@@ -190,54 +192,23 @@
 
     function onScanSuccess(result) {
       if (result && result.codeResult && result.codeResult.code) {
-        const barcode = result.codeResult.code;
-        if (barcode.length >= 8) { 
-          stopScanner();
-          checkDatabase(barcode);
-        }
-      }
-    }
-
-    function stopScanner() {
-      if (Quagga) {
-        Quagga.offDetected(onScanSuccess); // Remove listener
-        Quagga.stop();
-        document.getElementById('scanner-container').classList.add('hidden');
-        document.getElementById('startScanBtn').classList.remove('hidden');
-      }
-    }
-
-    // Quagga passes a structured result object
-    function onScanSuccess(result) {
-      if (result && result.codeResult && result.codeResult.code) {
-        const barcode = result.codeResult.code;
+        const barcodeString = String(result.codeResult.code).trim();
         
-        // Quagga is highly sensitive; ignore incomplete scans
-        if (barcode.length >= 8) { 
-          stopScanner();
-          checkDatabase(barcode);
+        // Only accept if it's a valid length barcode string
+        if (barcodeString && barcodeString.length >= 8 && !barcodeString.includes("[object")) { 
+          stopScanner(); // Stops the camera instantly
+          checkDatabase(barcodeString); // Checks the database with a clean string
         }
       }
-    }
-
-    function stopScanner() {
-      if (html5QrcodeScanner) {
-        html5QrcodeScanner.stop().then(() => {
-          document.getElementById('scanner-container').classList.add('hidden');
-          document.getElementById('startScanBtn').classList.remove('hidden');
-        }).catch(err => console.error("Failed to stop scanner", err));
-      }
-    }
-
-    function onScanSuccess(decodedText) {
-      stopScanner();
-      checkDatabase(decodedText);
     }
 
     // --- Data Logic ---
-    function checkDatabase(barcode) {
-      const product = localDB.find(p => p["Barcode"] == barcode);
+    // FIXED: Defensively sanitizes incoming input to prevent [object Object] rendering
+    function checkDatabase(barcodeInput) {
+      let barcode = String(barcodeInput).trim();
       
+      const product = localDB.find(p => String(p["Barcode"]).trim() === barcode);
+
       if (product) {
         document.getElementById('result-section').classList.remove('hidden');
         document.getElementById('res-name').innerText = product["Product Name"];
@@ -248,12 +219,11 @@
         document.getElementById('statusMsg').innerText = "Product loaded from cache!";
       } else {
         document.getElementById('add-form-section').classList.remove('hidden');
-        document.getElementById('new-barcode').value = barcode;
+        document.getElementById('new-barcode').value = barcode; // Will be a clean number string now
         document.getElementById('statusMsg').innerText = "New barcode detected.";
       }
     }
 
-    // UPDATED: Now uses fetch() to save to Google Sheets
     async function saveNewProduct() {
       const btn = document.getElementById('saveBtn');
       btn.innerText = "Saving...";
@@ -271,10 +241,8 @@
       try {
         const response = await fetch(GAS_URL, {
           method: 'POST',
-          redirect: 'follow', // Crucial for Google Apps Script
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8", // Bypasses the CORS preflight check
-          },
+          redirect: 'follow',
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({ action: "addProduct", productData: productData })
         });
         const result = await response.json();
