@@ -119,19 +119,25 @@
 
       html5QrcodeScanner = new Html5Qrcode("reader");
       
-      // OPTIMIZED CONFIGURATION FOR FOOD BARCODES
       const config = { 
-        fps: 20, // Double the frame rate for faster detection
-        qrbox: { width: 300, height: 150 }, // Wider target box to fit standard EAN/UPC codes
+        fps: 15, // 15 is the sweet spot for HD video (20 can overheat older phones)
+        qrbox: { width: 250, height: 150 }, // Keep the scanning window focused
         formatsToSupport: [
-          Html5QrcodeSupportedFormats.EAN_13, // Standard EU food barcode
-          Html5QrcodeSupportedFormats.EAN_8,  // Short EU food barcode
-          Html5QrcodeSupportedFormats.UPC_A,  // Standard US food barcode
-          Html5QrcodeSupportedFormats.UPC_E   // Short US food barcode
+          Html5QrcodeSupportedFormats.EAN_13, 
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E
         ]
       };
+
+      // Force the camera into HD resolution
+      const cameraConstraints = {
+        facingMode: "environment",
+        width: { min: 640, ideal: 1280, max: 1920 },
+        height: { min: 480, ideal: 720, max: 1080 }
+      };
       
-      html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
+      html5QrcodeScanner.start(cameraConstraints, config, onScanSuccess)
         .catch(err => {
           alert("Camera error: " + err);
           stopScanner();
