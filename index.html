@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-<head>t
+<head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -469,9 +469,17 @@
       outCanvas.width = w;
       outCanvas.height = h;
       const outCtx = outCanvas.getContext('2d');
+
+      // ── B&W SCANNER UPGRADE ────────────────────────────────────────────────
+      // Nutzt die GPU des Smartphones, um das Bild in ein hochkontrastiertes 
+      // Schwarz-Weiß-Dokument umzuwandeln. Eliminiert farbige Hintergründe vollständig!
+      outCtx.filter = 'grayscale(100%) contrast(250%) brightness(110%)';
+      
+      // Zeichne das Bild mit dem aktiven Filter auf das Ausgabe-Canvas
       outCtx.drawImage(cropImageObj, x, y, w, h, 0, 0, w, h);
 
-      const croppedBase64 = outCanvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+      // Durch den B&W-Filter sinkt die Dateigröße des JPEGs drastisch
+      const croppedBase64 = outCanvas.toDataURL('image/jpeg', 0.80).split(',')[1];
       
       // Schließe das Modal und zeige den Ladestatus
       closeCropModal();
