@@ -115,6 +115,9 @@
 
     let localDB = [];
     let userPin = "";
+    // ─── NEU: BARCODE VALIDIERUNG ──────────────────────────────────────────────
+    let barcodeBuffer = [];
+    const REQUIRED_CONFIRMATIONS = 4; // Anzahl identischer Scans in Folge
 
     // ─── PIN MANAGEMENT ───────────────────────────────────────────────────────────
     function promptForPin(reason = "Enter the Secret Access PIN:") {
@@ -186,6 +189,8 @@
 
     // ─── SCANNER ──────────────────────────────────────────────────────────────────
     function startScanner() {
+      barcodeBuffer = []; // Puffer bei jedem neuen Scan-Versuch leeren!
+      
       document.getElementById('scanner-container').classList.remove('hidden');
       document.getElementById('startScanBtn').classList.add('hidden');
       document.getElementById('result-section').classList.add('hidden');
@@ -264,7 +269,26 @@
     function onScanSuccess(result) {
       if (result && result.codeResult && result.codeResult.code) {
         const barcodeString = String(result.codeResult.code).trim();
-        if (barcodeString && barcodeString.length >= 8 && !barcodeString.includes("[object")) {
+        
+        // Grundlegender Filter für offensichtlichen Müll
+        if (!barcodeString || barcodeString.length < 8 || barcodeString.includes("[object")) {
+          return;
+        }
+
+        // Aktuellen Scan in den Puffer schieben
+        barcodeBuffer.push(barcodeString);
+
+        // Puffer auf die maximale Prüfgröße begrenzen
+        if (barcodeBuffer.length > REQUIRED_CONFIRMATIONS) {
+          barcodeBuffer.shift();
+        }
+
+        // Prüfen, ob der Puffer voll ist UND alle Einträge absolut identisch sind
+        const isStable = barcodeBuffer.length === REQUIRED_CONFIRMATIONS && 
+                         barcodeBuffer.every(code => code === barcodeString);
+
+        if (isStable) {
+          // Erst wenn der Wert X-mal identisch gelesen wurde, stoppen wir
           stopScanner();
           checkDatabase(barcodeString);
         }
