@@ -315,53 +315,75 @@
       }
     }
 
-    // ─── OCR ──────────────────────────────────────────────────────────────────────
     async function runLabelOCR(input) {
       const file = input.files[0];
       if (!file) return;
 
       const status = document.getElementById('ocrStatus');
-      status.innerText = "Analyzing nutrition values...";
+      status.innerText = "Processing & Cropping image...";
       status.className = "text-xs text-center text-orange-600 font-bold mt-1";
 
       const reader = new FileReader();
-      reader.onload = async function() {
-        const base64Image = reader.result.split(',')[1];
-        try {
-          const response = await fetch(GAS_URL + '?t=' + Date.now(), {
-            method: 'POST',
-            redirect: 'follow',
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ action: "runOCR", base64Image: base64Image, pin: userPin })
-          });
-          const result = await response.json();
+      reader.onload = function() {
+        const img = new Image();
+        img.onload = async function() {
+          // Erstelle ein unsichtbares Canvas für den Zuschnitt
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
 
-          if (result.success) {
-            // Populate fields
-            document.getElementById('new-cal').value = result.macros.calories;
-            document.getElementById('new-pro').value = result.macros.protein;
-            document.getElementById('new-carb').value = result.macros.carbs;
-            document.getElementById('new-zucker').value = result.macros.zucker;
-            document.getElementById('new-fat').value = result.macros.fat;
-            document.getElementById('new-gesFat').value = result.macros.gesFat;
-            document.getElementById('new-salt').value = result.macros.salt;
+          // Wir schneiden ein quadratisches Zentrum aus dem Bild aus.
+          // Das fokussiert die Kamera-Aufnahme optimal auf die Tabelle.
+          const size = Math.min(img.width, img.height);
+          const sourceX = (img.width - size) / 2;
+          const sourceY = (img.height - size) / 2;
 
-            // Show raw OCR debug panel so you can inspect what Vision returned
-            document.getElementById('ocr-raw-text').innerText = result.rawText || "(no raw text returned)";
-            document.getElementById('ocr-debug-panel').classList.remove('hidden');
-            status.innerText = "Extraction complete! Please verify.";
-            status.className = "text-xs text-center text-green-600 font-bold mt-1";
-          } else if (result.code === "INVALID_PIN") {
-            handleInvalidPin();
-            status.innerText = "Invalid PIN.";
-          } else {
-            status.innerText = "OCR Failed: " + result.error;
+          // Ziel-Größe des Bildes für die Cloud Vision (1000x1000px reicht völlig aus)
+          canvas.width = 1000;
+          canvas.height = 1000;
+
+          // Zeichne den fokussierten Ausschnitt auf das Canvas
+          ctx.drawImage(img, sourceX, sourceY, size, size, 0, 0, 1000, 1000);
+
+          // Generiere das bereinigte, kleinere Base64-Bild
+          const croppedBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+
+          status.innerText = "Analyzing focused nutrition values...";
+
+          try {
+            const response = await fetch(GAS_URL + '?t=' + Date.now(), {
+              method: 'POST',
+              redirect: 'follow',
+              headers: { "Content-Type": "text/plain;charset=utf-8" },
+              body: JSON.stringify({ action: "runOCR", base64Image: croppedBase64, pin: userPin })
+            });
+            const result = await response.json();
+
+            if (result.success) {
+              document.getElementById('new-cal').value = result.macros.calories;
+              document.getElementById('new-pro').value = result.macros.protein;
+              document.getElementById('new-carb').value = result.macros.carbs;
+              document.getElementById('new-zucker').value = result.macros.zucker;
+              document.getElementById('new-fat').value = result.macros.fat;
+              document.getElementById('new-gesFat').value = result.macros.gesFat;
+              document.getElementById('new-salt').value = result.macros.salt;
+
+              document.getElementById('ocr-raw-text').innerText = result.rawText || "(no raw text returned)";
+              document.getElementById('ocr-debug-panel').classList.remove('hidden');
+              status.innerText = "Extraction complete! Please verify.";
+              status.className = "text-xs text-center text-green-600 font-bold mt-1";
+            } else if (result.code === "INVALID_PIN") {
+              handleInvalidPin();
+              status.innerText = "Invalid PIN.";
+            } else {
+              status.innerText = "OCR Failed: " + result.error;
+              status.className = "text-xs text-center text-red-600 font-bold mt-1";
+            }
+          } catch (err) {
+            status.innerText = "Network error during OCR.";
             status.className = "text-xs text-center text-red-600 font-bold mt-1";
           }
-        } catch (err) {
-          status.innerText = "Network error during OCR.";
-          status.className = "text-xs text-center text-red-600 font-bold mt-1";
-        }
+        };
+        img.src = reader.result;
       };
       reader.readAsDataURL(file);
     }
